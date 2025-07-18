@@ -2,8 +2,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.checkpoint import checkpoint
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict, Any
 import math
+from .positional_encoding import (
+    RotaryPositionEmbedding,
+    ALiBiPositionalBias,
+    create_position_encoding
+)
 
 
 class DendriteAttention(nn.Module):
@@ -15,6 +20,8 @@ class DendriteAttention(nn.Module):
         num_attention_heads: int,
         attention_dropout: float = 0.1,
         use_flash_attention: bool = False,
+        position_encoding_type: str = 'learned',
+        max_position_embeddings: int = 131072,
     ):
         super().__init__()
         self.hidden_size = hidden_size
@@ -28,6 +35,19 @@ class DendriteAttention(nn.Module):
         self.value = nn.Linear(hidden_size, self.all_head_size)
         
         self.dropout = nn.Dropout(attention_dropout)
+        
+        # Position encoding
+        self.position_encoding_type = position_encoding_type
+        if position_encoding_type == 'rope':
+            self.rotary_emb = RotaryPositionEmbedding(
+                self.attention_head_size,
+                max_position_embeddings
+            )
+        elif position_encoding_type == 'alibi':
+            self.alibi = ALiBiPositionalBias(
+                num_attention_heads,
+                max_position_embeddings
+            )
         
     def transpose_for_scores(self, x):
         new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
@@ -51,6 +71,12 @@ class DendriteAttention(nn.Module):
             key_layer = self.transpose_for_scores(self.key(hidden_states))
             value_layer = self.transpose_for_scores(self.value(hidden_states))
         
+        # Apply rotary position embedding if enabled
+        if self.position_encoding_type == 'rope':
+            query_layer, key_layer = self.rotary_emb.apply_rotary_pos_emb(
+                query_layer, key_layer
+            )
+        
         if self.use_flash_attention and torch.cuda.is_available():
             try:
                 from flash_attn import flash_attn_func
@@ -64,6 +90,10 @@ class DendriteAttention(nn.Module):
                 attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
                 attention_scores = attention_scores / math.sqrt(self.attention_head_size)
                 
+                # Apply ALiBi bias if enabled
+                if self.position_encoding_type == 'alibi':
+                    attention_scores = self.alibi(attention_scores)
+                
                 if attention_mask is not None:
                     attention_scores = attention_scores + attention_mask
                 
@@ -74,6 +104,10 @@ class DendriteAttention(nn.Module):
         else:
             attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
             attention_scores = attention_scores / math.sqrt(self.attention_head_size)
+            
+            # Apply ALiBi bias if enabled
+            if self.position_encoding_type == 'alibi':
+                attention_scores = self.alibi(attention_scores)
             
             if attention_mask is not None:
                 attention_scores = attention_scores + attention_mask
@@ -102,6 +136,8 @@ class DendriteBlock(nn.Module):
         attention_probs_dropout_prob: float = 0.1,
         layer_norm_eps: float = 1e-12,
         use_flash_attention: bool = False,
+        position_encoding_type: str = 'learned',
+        max_position_embeddings: int = 131072,
     ):
         super().__init__()
         self.attention = DendriteAttention(
@@ -109,6 +145,8 @@ class DendriteBlock(nn.Module):
             num_attention_heads,
             attention_probs_dropout_prob,
             use_flash_attention,
+            position_encoding_type,
+            max_position_embeddings,
         )
         self.output = nn.Linear(hidden_size, hidden_size)
         self.LayerNorm = nn.LayerNorm(hidden_size, eps=layer_norm_eps)
@@ -161,6 +199,7 @@ class DendriteTransformer(nn.Module):
         layer_norm_eps: float = 1e-12,
         use_flash_attention: bool = False,
         gradient_checkpointing: bool = False,
+        position_encoding_type: str = 'learned',
     ):
         super().__init__()
         self.config = {
@@ -175,10 +214,24 @@ class DendriteTransformer(nn.Module):
             "layer_norm_eps": layer_norm_eps,
             "use_flash_attention": use_flash_attention,
             "gradient_checkpointing": gradient_checkpointing,
+            "position_encoding_type": position_encoding_type,
         }
         
+        self.position_encoding_type = position_encoding_type
+        
         self.embeddings = nn.Embedding(vocab_size, hidden_size)
-        self.position_embeddings = nn.Embedding(max_position_embeddings, hidden_size)
+        
+        # Position encoding based on type
+        if position_encoding_type in ['learned', 'sinusoidal']:
+            self.position_embeddings = create_position_encoding(
+                position_encoding_type,
+                hidden_size,
+                max_position_embeddings
+            )
+        else:
+            # For RoPE and ALiBi, position encoding is handled in attention
+            self.position_embeddings = None
+        
         self.LayerNorm = nn.LayerNorm(hidden_size, eps=layer_norm_eps)
         self.dropout = nn.Dropout(hidden_dropout_prob)
         
@@ -191,6 +244,8 @@ class DendriteTransformer(nn.Module):
                 attention_probs_dropout_prob,
                 layer_norm_eps,
                 use_flash_attention,
+                position_encoding_type,
+                max_position_embeddings,
             )
             for _ in range(num_hidden_layers)
         ])
@@ -217,8 +272,18 @@ class DendriteTransformer(nn.Module):
         position_ids = position_ids.unsqueeze(0).expand(batch_size, -1)
         
         embeddings = self.embeddings(input_ids)
-        position_embeddings = self.position_embeddings(position_ids)
-        hidden_states = embeddings + position_embeddings
+        
+        # Apply position embeddings if using learned or sinusoidal
+        if self.position_embeddings is not None:
+            if self.position_encoding_type == 'learned':
+                position_embeddings = self.position_embeddings(position_ids)
+            else:  # sinusoidal
+                position_embeddings = self.position_embeddings(seq_length)
+            hidden_states = embeddings + position_embeddings
+        else:
+            # For RoPE and ALiBi, position encoding is handled in attention
+            hidden_states = embeddings
+        
         hidden_states = self.LayerNorm(hidden_states)
         hidden_states = self.dropout(hidden_states)
         

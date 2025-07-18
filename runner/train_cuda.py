@@ -181,6 +181,7 @@ def main():
         'max_position_embeddings': config['seq_len'],
         'use_flash_attention': config.get('flash_attention', True),
         'gradient_checkpointing': config.get('gradient_checkpointing', True),
+        'position_encoding_type': config.get('position_encoding_type', 'learned'),
     }
     
     model = DendriteForCausalLM(model_config)

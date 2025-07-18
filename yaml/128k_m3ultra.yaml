@@ -16,6 +16,7 @@ hidden_size: 1024
 num_layers: 24
 num_heads: 16
 intermediate_size: 4096
+position_encoding_type: "rope"  # Options: learned, sinusoidal, rope, alibi
 
 # Training parameters
 num_epochs: 3
