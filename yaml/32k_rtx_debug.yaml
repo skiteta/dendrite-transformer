@@ -1,0 +1,59 @@
+# Configuration for NVIDIA RTX A5500 - 32K context debugging/fine-tuning
+# Target: Fast training loops with QLoRA and Flash-Attention 2
+
+model_name: dendrite-7b
+seq_len: 32768
+batch_size: 4
+precision: fp16
+optimizer: adamw_8bit            # bitsandbytes 8-bit optimizer
+learning_rate: 5e-5
+weight_decay: 0.01
+beta1: 0.9
+beta2: 0.999
+
+# Model architecture
+hidden_size: 768
+num_layers: 12
+num_heads: 12
+intermediate_size: 3072
+
+# Training parameters
+num_epochs: 5
+max_steps: 5000
+gradient_clip: 1.0
+gradient_checkpointing: true     # Memory optimization for 24GB VRAM
+log_interval: 10
+save_interval: 500
+
+# Dataset
+dataset_name: "wikitext"
+dataset_config: "wikitext-103-raw-v1"
+tokenizer_name: "gpt2"
+num_proc: 4
+
+# Device-specific settings
+cuda_device: 0
+flash_attention: true            # Flash-Attention 2 for efficiency
+compile: true                    # torch.compile optimization
+deterministic: false
+seed: 42
+
+# LoRA configuration
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: ["query", "key", "value", "output", "output_dense"]
+
+# Memory optimization
+flash_attn_chunk: 512            # Chunk size for flash attention
+num_workers: 4
+
+# Evaluation
+eval_steps: 500
+eval_batch_size: 2
+eval_max_length: 1024
+
+# Output
+output_dir: "./outputs/32k_rtx_debug"
+save_total_limit: 5

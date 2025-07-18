@@ -1,0 +1,32 @@
+[project]
+name = "dendrite-transformer"
+version = "0.1.0"
+description = "Dendrite-Transformer: Single-node edition for Apple M3 Ultra and NVIDIA RTX A5500"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "torch>=2.0.0",
+    "transformers>=4.35.0",
+    "pyyaml>=6.0",
+    "numpy>=1.24.0",
+    "tqdm>=4.65.0",
+    "datasets>=2.14.0",
+    "tensorboard>=2.13.0",
+    "rouge-score>=0.1.2",
+    "pytest>=7.4.0",
+]
+
+[project.optional-dependencies]
+mlx = [
+    "mlx>=0.8.0",
+]
+cuda = [
+    "flash-attn>=2.3.0",
+    "bitsandbytes>=0.41.0",
+    "lion-pytorch>=0.1.0",
+]
+dev = [
+    "black>=23.7.0",
+    "ruff>=0.0.285",
+    "mypy>=1.5.0",
+]

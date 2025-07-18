@@ -1,0 +1,88 @@
+# Configuration for fine-tuning on PG-19 dataset
+# Target: Long-form text generation and summarization
+
+model_name: dendrite-finetune-pg19
+seq_len: 8192
+batch_size: 2
+precision: fp16
+optimizer: adamw
+learning_rate: 2e-5
+weight_decay: 0.01
+beta1: 0.9
+beta2: 0.999
+
+# Model architecture (compatible with pre-trained checkpoint)
+hidden_size: 768
+num_layers: 12
+num_heads: 12
+intermediate_size: 3072
+
+# Training parameters
+num_epochs: 3
+max_steps: 3000
+gradient_clip: 1.0
+gradient_checkpointing: true
+log_interval: 20
+save_interval: 300
+
+# Dataset
+dataset_name: "pg19"
+dataset_config: null
+tokenizer_name: "gpt2"
+num_proc: 4
+
+# Device-specific settings
+cuda_device: 0
+flash_attention: true
+compile: false
+deterministic: true
+seed: 42
+
+# Fine-tuning specific
+warmup_steps: 100
+lr_scheduler: "cosine"
+warmup_ratio: 0.1
+
+# Data preprocessing
+max_input_length: 7168
+max_target_length: 1024
+text_column: "text"
+summary_column: null
+
+# LoRA for fine-tuning (optional)
+lora:
+  r: 32
+  alpha: 64
+  dropout: 0.1
+  target_modules: ["query", "key", "value", "output", "output_dense", "intermediate"]
+
+# Evaluation
+eval_steps: 300
+eval_batch_size: 1
+eval_max_length: 2048
+eval_dataset: "test"
+
+# Generation parameters for evaluation
+generation:
+  max_length: 512
+  num_beams: 4
+  temperature: 0.7
+  top_p: 0.9
+  do_sample: true
+  repetition_penalty: 1.1
+
+# ROUGE evaluation
+rouge_metrics: ["rouge1", "rouge2", "rougeL"]
+rouge_use_stemmer: true
+
+# Output
+output_dir: "./outputs/finetune_pg19"
+save_total_limit: 3
+load_best_model_at_end: true
+metric_for_best_model: "rougeL"
+greater_is_better: true
+
+# Logging
+logging_steps: 50
+report_to: "tensorboard"
+run_name: "dendrite-pg19-finetune"

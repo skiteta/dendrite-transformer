@@ -1,0 +1,49 @@
+# Configuration for Apple M3 Ultra - 128K context pre-training
+# Target: Long-context representation learning on UMA 512GB
+
+model_name: dendrite-13b
+seq_len: 131072
+batch_size: 1                    # UMA512GB single-example training
+precision: bfloat16
+optimizer: lion                  # Lion optimizer for better convergence
+learning_rate: 1e-4
+weight_decay: 0.01
+beta1: 0.9
+beta2: 0.999
+
+# Model architecture
+hidden_size: 1024
+num_layers: 24
+num_heads: 16
+intermediate_size: 4096
+
+# Training parameters
+num_epochs: 3
+max_steps: 10000
+gradient_clip: 1.0
+gradient_checkpointing: false    # UMA allows full gradients in memory
+log_interval: 10
+save_interval: 500
+
+# Dataset
+dataset_name: "wikitext"
+dataset_config: "wikitext-103-raw-v1"
+tokenizer_name: "gpt2"
+
+# Device-specific settings
+device: "mps"                    # MLX backend auto-switching
+num_threads: 12                  # Temperature control for M3 Ultra
+deterministic: false
+
+# Long-context specific
+flash_attention: false           # Not supported on MPS
+compile: false                   # torch.compile not supported on MPS
+
+# Evaluation
+eval_steps: 1000
+eval_batch_size: 1
+eval_max_length: 2048
+
+# Output
+output_dir: "./outputs/128k_m3ultra"
+save_total_limit: 3
